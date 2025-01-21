@@ -199,30 +199,33 @@ def list_aircraft(num_results: int = 100, page: int = 0) -> list[dict]:
     # TODO
 
     try:
+        # Define the path to the processed data file
         processed_data_file = os.path.join(settings.raw_dir, "prepared", "processed_data.json")
 
+        # Check if the file exists
         if not os.path.exists(processed_data_file):
             raise FileNotFoundError(f"{processed_data_file} not found.")
 
+        # Read the processed data from the file
         with open(processed_data_file, "r", encoding="utf-8") as f:
             processed_data = json.load(f)
 
-        # Sort data by ICAO
+        # Sort data by ICAO code (ascending order)
         sorted_data = sorted(processed_data, key=lambda x: x["icao"])
 
-         # Paginate results
+        # Apply pagination
         start = page * num_results
         end = start + num_results
         paginated_data = sorted_data[start:end]
 
-        # Return paginated list of aircraft
+        # Return the paginated list of aircraft
         return paginated_data
-
+    
     except FileNotFoundError as e:
         return {"error": str(e)}, status.HTTP_404_NOT_FOUND
     except Exception as e:
         return {"error": f"An error occurred: {e}"}, status.HTTP_500_INTERNAL_SERVER_ERROR
-
+    
     return [{"icao": "0d8300", "registration": "YV3382", "type": "LJ31"}]
 
 
@@ -232,14 +235,9 @@ def get_aircraft_position(icao: str, num_results: int = 1000, page: int = 0) -> 
     If an aircraft is not found, return an empty list.
     """
     # TODO implement and return a list with dictionaries with those values.
-   
-   
-   
-   
-   
-   
-   
-   
+
+    
+    
     return [{"timestamp": 1609275898.6, "lat": 30.404617, "lon": -86.476566}]
 
 
