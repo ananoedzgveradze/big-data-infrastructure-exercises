@@ -68,7 +68,7 @@ def download_data(
     # ✅ Fetch file list from ADSBExchange
     response = requests.get(BASE_URL)
     if response.status_code != 200:
-        print(f"❌ Failed to access {BASE_URL}, HTTP {response.status_code}")
+        print(f"Failed to access {BASE_URL}, HTTP {response.status_code}")
         return f"Failed to access {BASE_URL}, HTTP {response.status_code}"
     
     soup = BeautifulSoup(response.text, "html.parser")
@@ -76,12 +76,12 @@ def download_data(
 
 
     if len(file_links) == 0:
-        print("❌ No files found for download.")
+        print("No files found for download.")
         return "No files found"
 
     # ✅ Limit downloads
     files_to_download = file_links[:file_limit]
-    print(f"📥 Downloading {len(files_to_download)} files...")
+    print(f"Downloading {len(files_to_download)} files...")
 
     # ✅ Download each file
     for file_name in files_to_download:
@@ -92,18 +92,18 @@ def download_data(
             file_name = file_name[:-3]  # Remove `.gz`
 
     file_path = os.path.join(download_dir, file_name)
-    print(f"⬇ Downloading {file_name}")
+    print(f"Downloading {file_name}")
 
     try:
         file_response = requests.get(file_url, stream=True)
         if file_response.status_code == 200:
             with open(file_path, "wb") as file:
                 file.write(file_response.content)
-            print(f"✅ Downloaded {file_name}")
+            print(f"Downloaded {file_name}")
         else:
             print(f"⚠️ Skipping {file_name}, HTTP {file_response.status_code}")
     except Exception as e:
-            print(f"❌ Error downloading {file_name}: {e}")
+            print(f"Error downloading {file_name}: {e}")
 
     return "OK"
 
@@ -161,7 +161,7 @@ def prepare_data() -> str:
             if "aircraft" in data:
                 aircraft_list = data["aircraft"]
             else:
-                print(f"⚠️ Skipping {file_name}: No 'aircraft' key found.")
+                print(f"Skipping {file_name}: No 'aircraft' key found.")
                 continue  # Skip this file if no aircraft data is found
 
             for entry in aircraft_list:
@@ -172,21 +172,21 @@ def prepare_data() -> str:
                     "lon": entry.get("lon"),
                     "altitude": entry.get("alt_baro"),
                     "speed": entry.get("gs"),
-                    "timestamp": data.get("now", None),  # Use "now" from JSON as timestamp
+                    "timestamp": data.get("now", None), 
                     "aircraft_type": entry.get("t", "Unknown"),
                     "registration": entry.get("r", "Unknown"),
                 }
                 processed_data.append(processed_entry)
 
         except Exception as e:
-            print(f"❌ Error processing file {file_name}: {e}")
+            print(f"Error processing file {file_name}: {e}")
 
     # Save processed data to JSON
     output_file = os.path.join(prepare_data_dir, "processed_data.json")
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(processed_data, f, indent=4)
 
-    print(f"✅ Processed data saved to {output_file}")
+    print(f"Processed data saved to {output_file}")
 
     return "OK"
 
@@ -202,11 +202,10 @@ def list_aircraft(num_results: int = 100, page: int = 0) -> list[dict]:
         # Define the path to the processed data file
         processed_data_file = os.path.join(settings.raw_dir, "prepared", "processed_data.json")
 
-        # Check if the file exists
+        
         if not os.path.exists(processed_data_file):
             raise FileNotFoundError(f"{processed_data_file} not found.")
 
-        # Read the processed data from the file
         with open(processed_data_file, "r", encoding="utf-8") as f:
             processed_data = json.load(f)
 
@@ -218,7 +217,6 @@ def list_aircraft(num_results: int = 100, page: int = 0) -> list[dict]:
         end = start + num_results
         paginated_data = sorted_data[start:end]
 
-        # Return the paginated list of aircraft
         return paginated_data
     
     except FileNotFoundError as e:
@@ -235,8 +233,41 @@ def get_aircraft_position(icao: str, num_results: int = 1000, page: int = 0) -> 
     If an aircraft is not found, return an empty list.
     """
     # TODO implement and return a list with dictionaries with those values.
+    try:
+        # Load the processed data
+        processed_data_file = os.path.join(settings.raw_dir, "prepared", "processed_data.json")
+        if not os.path.exists(processed_data_file):
+            raise FileNotFoundError(f"{processed_data_file} not found.")
 
-    
+        with open(processed_data_file, "r", encoding="utf-8") as f:
+            processed_data = json.load(f)
+
+        # Find the aircraft data for the specified ICAO
+        aircraft_data = [entry for entry in processed_data if entry["icao"] == icao]
+        if not aircraft_data:
+            raise HTTPException(status_code=404, detail="Aircraft not found")
+
+        # Get positions for the aircraft
+        positions = []
+        for entry in aircraft_data:
+            positions.extend(entry.get("positions", []))  
+            if "positions" in entry:
+                positions.extend(entry["positions"])
+
+        # Paginate the positions list
+        start = page * num_results
+        end = start + num_results
+        paginated_positions = positions[start:end]
+
+        if not paginated_positions:
+            return []
+        
+        return paginated_positions
+
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     
     return [{"timestamp": 1609275898.6, "lat": 30.404617, "lon": -86.476566}]
 
@@ -250,4 +281,60 @@ def get_aircraft_statistics(icao: str) -> dict:
     * had_emergency
     """
     # TODO Gather and return the correct statistics for the requested aircraft
+   
+    try:
+    
+        processed_data_file = os.path.join(settings.raw_dir, "prepared", "processed_data.json")
+        if not os.path.exists(processed_data_file):
+            raise FileNotFoundError(f"{processed_data_file} not found.")
+
+        with open(processed_data_file, "r", encoding="utf-8") as f:
+            processed_data = json.load(f)
+
+        # Find the aircraft data for the specified ICAO
+        aircraft_data = [entry for entry in processed_data if entry["icao"] == icao]
+        if not aircraft_data:
+            raise HTTPException(status_code=404, detail="Aircraft not found")
+
+        
+        max_altitude_baro = float('-inf')
+        max_ground_speed = float('-inf')
+        had_emergency = False
+
+        # Iterate over the aircraft's positions to gather statistics
+        for entry in aircraft_data:
+            positions = entry.get("positions", [])
+            for position in positions:
+                # Check for maximum altitude and ground speed
+                altitude = position.get("altitude", 0)
+                if altitude > max_altitude_baro:
+                    max_altitude_baro = altitude
+                
+                speed = position.get("speed", 0)
+                if speed > max_ground_speed:
+                    max_ground_speed = speed
+
+            
+            if entry.get("emergency", False):
+                had_emergency = True
+
+        
+        if max_altitude_baro == float('-inf'):
+            max_altitude_baro = None  
+
+        if max_ground_speed == float('-inf'):
+            max_ground_speed = None  
+
+       
+        return {
+            "max_altitude_baro": max_altitude_baro,
+            "max_ground_speed": max_ground_speed,
+            "had_emergency": had_emergency
+        }
+
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+   
     return {"max_altitude_baro": 300000, "max_ground_speed": 493, "had_emergency": False}
