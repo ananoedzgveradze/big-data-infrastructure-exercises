@@ -41,7 +41,7 @@ def download_data(
         ),
     ] = 100,
 ) -> str:
-    """Downloads the `file_limit` files AS IS inside the folder data/20231101
+    """Downloads the file_limit files AS IS inside the folder data/20231101
 
     data: https://samples.adsbexchange.com/readsb-hist/2023/11/01/
     documentation: https://www.adsbexchange.com/version-2-api-wip/
@@ -51,60 +51,60 @@ def download_data(
     and the level of preprocessing you might need.
 
     To manipulate the data use any library you feel comfortable with.
-    Just make sure to configure it in the `pyproject.toml` file
-    so it can be installed using `poetry update`.
+    Just make sure to configure it in the pyproject.toml file
+    so it can be installed using poetry update.
 
 
     TIP: always clean the download folder before writing again to avoid having old files.
     """
     download_dir = os.path.join(settings.raw_dir, "day=20231101")
-    print(f"📂 Saving files in: {download_dir}")  # Debugging print statement
+    print(f"Saving files in: {download_dir}")  # Debugging print statement
 
-    # ✅ Ensure the directory exists
+    # Ensure the directory exists
     if os.path.exists(download_dir):
         shutil.rmtree(download_dir)  # Delete old files
     os.makedirs(download_dir, exist_ok=True)
 
-    # ✅ Fetch file list from ADSBExchange
-    response = requests.get(BASE_URL)
-    if response.status_code != 200:
-        print(f"Failed to access {BASE_URL}, HTTP {response.status_code}")
-        return f"Failed to access {BASE_URL}, HTTP {response.status_code}"
-    
+    # Fetch file list from ADSBExchange
+    try:
+        response = requests.get(BASE_URL)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+    except requests.exceptions.RequestException as e:
+        print(f"Error accessing {BASE_URL}: {e}")
+        return f"Error accessing {BASE_URL}: {e}"
+
     soup = BeautifulSoup(response.text, "html.parser")
     file_links = [a["href"] for a in soup.find_all("a") if a["href"].endswith(".json.gz")]
-
 
     if len(file_links) == 0:
         print("No files found for download.")
         return "No files found"
 
-    # ✅ Limit downloads
+    # Limit downloads
     files_to_download = file_links[:file_limit]
     print(f"Downloading {len(files_to_download)} files...")
 
-    # ✅ Download each file
+    # Download each file
     for file_name in files_to_download:
         file_url = BASE_URL + file_name
 
     # Remove .gz extension since it's plain JSON
         if file_name.endswith(".json.gz"):
-            file_name = file_name[:-3]  # Remove `.gz`
+            file_name = file_name[:-3]  # Remove .gz
 
     file_path = os.path.join(download_dir, file_name)
     print(f"Downloading {file_name}")
 
     try:
-        file_response = requests.get(file_url, stream=True)
-        if file_response.status_code == 200:
+            file_response = requests.get(file_url, stream=True)
+            file_response.raise_for_status()  # Raise an exception for HTTP errors
             with open(file_path, "wb") as file:
                 file.write(file_response.content)
             print(f"Downloaded {file_name}")
-        else:
-            print(f"⚠️ Skipping {file_name}, HTTP {file_response.status_code}")
+    except requests.exceptions.RequestException as e:
+            print(f"Skipping {file_name}, Error: {e}")
     except Exception as e:
             print(f"Error downloading {file_name}: {e}")
-
     return "OK"
 
 
@@ -120,8 +120,8 @@ def prepare_data() -> str:
     and the level of preprocessing you might need.
 
     To manipulate the data use any library you feel comfortable with.
-    Just make sure to configure it in the `pyproject.toml` file
-    so it can be installed using `poetry update`.
+    Just make sure to configure it in the pyproject.toml file
+    so it can be installed using poetry update.
 
     TIP: always clean the prepared folder before writing again to avoid having old files.
 
@@ -132,7 +132,6 @@ def prepare_data() -> str:
     #define directories
     raw_data_dir = os.path.join(settings.raw_dir, "day=20231101")
     prepare_data_dir = os.path.join(settings.raw_dir, "prepared")
-
 
     # Ensure the prepared data directory is clean
     if os.path.exists(prepare_data_dir):
@@ -158,11 +157,11 @@ def prepare_data() -> str:
                     data = json.load(f)
 
             # Check if the JSON has an "aircraft" key
-            if "aircraft" in data:
-                aircraft_list = data["aircraft"]
-            else:
+            if "aircraft" not in data:
                 print(f"Skipping {file_name}: No 'aircraft' key found.")
-                continue  # Skip this file if no aircraft data is found
+                continue
+
+            aircraft_list = data["aircraft"]
 
             for entry in aircraft_list:
                 processed_entry = {
@@ -176,8 +175,15 @@ def prepare_data() -> str:
                     "aircraft_type": entry.get("t", "Unknown"),
                     "registration": entry.get("r", "Unknown"),
                 }
+                if not processed_entry["icao"]:
+                    print(f"Skipping entry with missing ICAO code in file {file_name}.")
+                    continue
+
+
                 processed_data.append(processed_entry)
 
+        except json.JSONDecodeError as e:
+            print(f"Error decoding JSON from {file_name}: {e}")
         except Exception as e:
             print(f"Error processing file {file_name}: {e}")
 
@@ -202,7 +208,6 @@ def list_aircraft(num_results: int = 100, page: int = 0) -> list[dict]:
         # Define the path to the processed data file
         processed_data_file = os.path.join(settings.raw_dir, "prepared", "processed_data.json")
 
-        
         if not os.path.exists(processed_data_file):
             raise FileNotFoundError(f"{processed_data_file} not found.")
 
@@ -237,7 +242,7 @@ def get_aircraft_position(icao: str, num_results: int = 1000, page: int = 0) -> 
         # Load the processed data
         processed_data_file = os.path.join(settings.raw_dir, "prepared", "processed_data.json")
         if not os.path.exists(processed_data_file):
-            raise FileNotFoundError(f"{processed_data_file} not found.")
+            raise HTTPException(status_code=404, detail="Processed data not found.")
 
         with open(processed_data_file, "r", encoding="utf-8") as f:
             processed_data = json.load(f)
@@ -250,22 +255,15 @@ def get_aircraft_position(icao: str, num_results: int = 1000, page: int = 0) -> 
         # Get positions for the aircraft
         positions = []
         for entry in aircraft_data:
-            positions.extend(entry.get("positions", []))  
-            if "positions" in entry:
-                positions.extend(entry["positions"])
+            positions.extend(entry.get("positions", []))
 
         # Paginate the positions list
         start = page * num_results
         end = start + num_results
         paginated_positions = positions[start:end]
-
-        if not paginated_positions:
-            return []
         
         return paginated_positions
 
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
@@ -283,10 +281,9 @@ def get_aircraft_statistics(icao: str) -> dict:
     # TODO Gather and return the correct statistics for the requested aircraft
    
     try:
-    
         processed_data_file = os.path.join(settings.raw_dir, "prepared", "processed_data.json")
         if not os.path.exists(processed_data_file):
-            raise FileNotFoundError(f"{processed_data_file} not found.")
+            raise HTTPException(status_code=404, detail="Processed data not found.")
 
         with open(processed_data_file, "r", encoding="utf-8") as f:
             processed_data = json.load(f)
@@ -294,47 +291,22 @@ def get_aircraft_statistics(icao: str) -> dict:
         # Find the aircraft data for the specified ICAO
         aircraft_data = [entry for entry in processed_data if entry["icao"] == icao]
         if not aircraft_data:
-            raise HTTPException(status_code=404, detail="Aircraft not found")
+            raise HTTPException(status_code=404, detail=f"Aircraft with ICAO {icao} not found.")
 
-        
-        max_altitude_baro = float('-inf')
-        max_ground_speed = float('-inf')
-        had_emergency = False
+        # Gather statistics
+        max_altitude_baro = max(entry["altitude"] for entry in aircraft_data if entry["altitude"] is not None)
+        max_ground_speed = max(entry["speed"] for entry in aircraft_data if entry["speed"] is not None)
+        had_emergency = any(entry.get("emergency", False) for entry in aircraft_data)
 
-        # Iterate over the aircraft's positions to gather statistics
-        for entry in aircraft_data:
-            positions = entry.get("positions", [])
-            for position in positions:
-                # Check for maximum altitude and ground speed
-                altitude = position.get("altitude", 0)
-                if altitude > max_altitude_baro:
-                    max_altitude_baro = altitude
-                
-                speed = position.get("speed", 0)
-                if speed > max_ground_speed:
-                    max_ground_speed = speed
-
-            
-            if entry.get("emergency", False):
-                had_emergency = True
-
-        
-        if max_altitude_baro == float('-inf'):
-            max_altitude_baro = None  
-
-        if max_ground_speed == float('-inf'):
-            max_ground_speed = None  
-
-       
         return {
             "max_altitude_baro": max_altitude_baro,
             "max_ground_speed": max_ground_speed,
-            "had_emergency": had_emergency
+            "had_emergency": had_emergency,
         }
 
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException as e:
+        raise e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-   
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    
     return {"max_altitude_baro": 300000, "max_ground_speed": 493, "had_emergency": False}
