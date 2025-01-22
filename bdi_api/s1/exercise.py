@@ -8,6 +8,7 @@ from typing import Annotated
 from typing import List, Dict
 from fastapi import APIRouter, status
 from fastapi import HTTPException
+
 from fastapi.params import Query
 
 from bdi_api.settings import Settings
@@ -70,41 +71,34 @@ def download_data(
         response = requests.get(BASE_URL)
         response.raise_for_status()  # Raise an exception for HTTP errors
     except requests.exceptions.RequestException as e:
-        print(f"Error accessing {BASE_URL}: {e}")
         return f"Error accessing {BASE_URL}: {e}"
 
     soup = BeautifulSoup(response.text, "html.parser")
     file_links = [a["href"] for a in soup.find_all("a") if a["href"].endswith(".json.gz")]
 
-    if len(file_links) == 0:
-        print("No files found for download.")
+    if not file_links:
         return "No files found"
-
-    # Limit downloads
+    
     files_to_download = file_links[:file_limit]
     print(f"Downloading {len(files_to_download)} files...")
 
-    # Download each file
+
     for file_name in files_to_download:
-        file_url = BASE_URL + file_name
+        file_url = BASE_URL + file_name  # Full URL of the file
+        file_path = os.path.join(download_dir, file_name)
 
-    # Remove .gz extension since it's plain JSON
-        if file_name.endswith(".json.gz"):
-            file_name = file_name[:-3]  # Remove .gz
-
-    file_path = os.path.join(download_dir, file_name)
-    print(f"Downloading {file_name}")
-
-    try:
+        try:
             file_response = requests.get(file_url, stream=True)
-            file_response.raise_for_status()  # Raise an exception for HTTP errors
+            file_response.raise_for_status()
+            
             with open(file_path, "wb") as file:
                 file.write(file_response.content)
-            print(f"Downloaded {file_name}")
-    except requests.exceptions.RequestException as e:
+
+            print(f"Downloaded {file_name} -> {file_path}")
+
+        except requests.exceptions.RequestException as e:
             print(f"Skipping {file_name}, Error: {e}")
-    except Exception as e:
-            print(f"Error downloading {file_name}: {e}")
+
     return "OK"
 
 
@@ -138,54 +132,44 @@ def prepare_data() -> str:
         shutil.rmtree(prepare_data_dir)
     os.makedirs(prepare_data_dir, exist_ok=True)
 
-    # List all downloaded JSON files (both .json and .json.gz)
-    raw_files = [f for f in os.listdir(raw_data_dir) if f.endswith(".json") or f.endswith(".json.gz")]
-
     processed_data = []
 
-    # Read and process each file
-    for file_name in raw_files:
-        file_path = os.path.join(raw_data_dir, file_name)
+    # Process each `.json.gz` file in `raw_data_dir`
+    for file_name in os.listdir(raw_data_dir):
+        if file_name.endswith(".json.gz"):  # Assuming downloaded files still have .gz extension
+            file_path = os.path.join(raw_data_dir, file_name)
+            try:
+                print(f"Processing {file_name}...")
 
-        try:
-            # Open files correctly based on extension
-            if file_name.endswith(".json.gz"):
-                with gzip.open(file_path, "rt", encoding="utf-8") as f:
-                    data = json.load(f)
-            else:
+                # Open the JSON file normally (not as gzipped)
                 with open(file_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
+                    data = json.load(f)  # Load as normal JSON
 
-            # Check if the JSON has an "aircraft" key
-            if "aircraft" not in data:
-                print(f"Skipping {file_name}: No 'aircraft' key found.")
-                continue
-
-            aircraft_list = data["aircraft"]
-
-            for entry in aircraft_list:
-                processed_entry = {
-                    "icao": entry.get("hex", "Unknown"),
-                    "flight": entry.get("flight", "").strip(),
-                    "lat": entry.get("lat"),
-                    "lon": entry.get("lon"),
-                    "altitude": entry.get("alt_baro"),
-                    "speed": entry.get("gs"),
-                    "timestamp": data.get("now", None), 
-                    "aircraft_type": entry.get("t", "Unknown"),
-                    "registration": entry.get("r", "Unknown"),
-                }
-                if not processed_entry["icao"]:
-                    print(f"Skipping entry with missing ICAO code in file {file_name}.")
+                if "aircraft" not in data:
+                    print(f"Skipping {file_name}: No 'aircraft' key found.")
                     continue
 
+                aircraft_list = data["aircraft"]
 
-                processed_data.append(processed_entry)
+                for entry in aircraft_list:
+                    processed_entry = {
+                        "icao": entry.get("hex", "Unknown"),
+                        "flight": entry.get("flight", "").strip(),
+                        "lat": entry.get("lat"),
+                        "lon": entry.get("lon"),
+                        "altitude": entry.get("alt_baro"),
+                        "speed": entry.get("gs"),
+                        "timestamp": data.get("now", None),
+                        "aircraft_type": entry.get("t", "Unknown"),
+                        "registration": entry.get("r", "Unknown"),
+                        "positions": [{"timestamp": data.get("now"), "lat": entry.get("lat"), "lon": entry.get("lon")}]
+                    }
+                    processed_data.append(processed_entry)
 
-        except json.JSONDecodeError as e:
-            print(f"Error decoding JSON from {file_name}: {e}")
-        except Exception as e:
-            print(f"Error processing file {file_name}: {e}")
+            except json.JSONDecodeError as e:
+                print(f"Error decoding JSON from {file_name}: {e}")
+            except Exception as e:
+                print(f"Error processing file {file_name}: {e}")
 
     # Save processed data to JSON
     output_file = os.path.join(prepare_data_dir, "processed_data.json")
@@ -250,8 +234,8 @@ def get_aircraft_position(icao: str, num_results: int = 1000, page: int = 0) -> 
         # Find the aircraft data for the specified ICAO
         aircraft_data = [entry for entry in processed_data if entry["icao"] == icao]
         if not aircraft_data:
+            print(f"No data found for ICAO {icao}")
             raise HTTPException(status_code=404, detail="Aircraft not found")
-
         # Get positions for the aircraft
         positions = []
         for entry in aircraft_data:
@@ -291,7 +275,9 @@ def get_aircraft_statistics(icao: str) -> dict:
         # Find the aircraft data for the specified ICAO
         aircraft_data = [entry for entry in processed_data if entry["icao"] == icao]
         if not aircraft_data:
+            print(f"No data found for ICAO {icao}")  # Debugging statement
             raise HTTPException(status_code=404, detail=f"Aircraft with ICAO {icao} not found.")
+
 
         # Gather statistics
         max_altitude_baro = max(entry["altitude"] for entry in aircraft_data if entry["altitude"] is not None)
