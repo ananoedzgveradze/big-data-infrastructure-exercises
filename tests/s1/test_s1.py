@@ -43,8 +43,9 @@ class TestItCanBeEvaluated:
             r = response.json()
             assert isinstance(r, list), "Result is not a list"
             assert len(r) > 0, "Result is empty"
-            for field in ["icao", "registration", "type"]:
+            for field in ["icao", "registration", "aircraft_type"]: 
                 assert field in r[0], f"Missing '{field}' field."
+
 
     def test_positions(self, client: TestClient) -> None:
         icao = "06a0af"

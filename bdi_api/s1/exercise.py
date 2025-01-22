@@ -175,14 +175,14 @@ def prepare_data() -> str:
                     continue  # Skip records with unknown aircraft type
 
                 processed_entry = {
-                    "icao": entry.get("hex", "").strip(),
+                    "icao": entry.get("hex", "").strip() or "UNKNOWN",
                     "flight": entry.get("flight", "").strip(),
                     "lat": entry.get("lat"),
                     "lon": entry.get("lon"),
                     "altitude": entry.get("alt_baro"),
                     "speed": entry.get("gs"),
                     "timestamp": data.get("now"),
-                    "aircraft_type": entry.get("t"),
+                    "aircraft_type": entry.get("t", "Unknown"), 
                     "registration": entry.get("r", "Unknown"),
                     "positions": [{"timestamp": data.get("now"), "lat": entry.get("lat"), "lon": entry.get("lon")}],
                 }
