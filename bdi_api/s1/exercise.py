@@ -127,56 +127,63 @@ def prepare_data() -> str:
     raw_data_dir = os.path.join(settings.raw_dir, "day=20231101")
     prepare_data_dir = os.path.join(settings.raw_dir, "prepared")
 
-    # Ensure the prepared data directory is clean
     if os.path.exists(prepare_data_dir):
         shutil.rmtree(prepare_data_dir)
     os.makedirs(prepare_data_dir, exist_ok=True)
 
     processed_data = []
 
-    # Process each `.json.gz` file in `raw_data_dir`
     for file_name in os.listdir(raw_data_dir):
-        if file_name.endswith(".json.gz"):  # Assuming downloaded files still have .gz extension
-            file_path = os.path.join(raw_data_dir, file_name)
-            try:
-                print(f"Processing {file_name}...")
+        file_path = os.path.join(raw_data_dir, file_name)
 
-                # Open the JSON file normally (not as gzipped)
-                with open(file_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)  # Load as normal JSON
+        # Check if the file is gzipped
+        try:
+            with open(file_path, "rb") as f:
+                first_bytes = f.read(2)
 
-                if "aircraft" not in data:
-                    print(f"Skipping {file_name}: No 'aircraft' key found.")
-                    continue
+            is_gzipped = first_bytes == b'\x1f\x8b'  # Gzip magic number
 
-                aircraft_list = data["aircraft"]
+            if is_gzipped:
+                open_func = gzip.open  # Use gzip if gzipped
+                mode = "rt"
+            else:
+                open_func = open  # Use normal open if plain JSON
+                mode = "r"
 
-                for entry in aircraft_list:
-                    processed_entry = {
-                        "icao": entry.get("hex", "Unknown"),
-                        "flight": entry.get("flight", "").strip(),
-                        "lat": entry.get("lat"),
-                        "lon": entry.get("lon"),
-                        "altitude": entry.get("alt_baro"),
-                        "speed": entry.get("gs"),
-                        "timestamp": data.get("now", None),
-                        "aircraft_type": entry.get("t", "Unknown"),
-                        "registration": entry.get("r", "Unknown"),
-                        "positions": [{"timestamp": data.get("now"), "lat": entry.get("lat"), "lon": entry.get("lon")}]
-                    }
-                    processed_data.append(processed_entry)
+            print(f"Processing {file_name}... (GZ: {is_gzipped})")
 
-            except json.JSONDecodeError as e:
-                print(f"Error decoding JSON from {file_name}: {e}")
-            except Exception as e:
-                print(f"Error processing file {file_name}: {e}")
+            with open_func(file_path, mode, encoding="utf-8") as f:
+                data = json.load(f)
 
-    # Save processed data to JSON
+            if "aircraft" not in data:
+                print(f"Skipping {file_name}: No 'aircraft' key.")
+                continue
+
+            for entry in data["aircraft"]:
+                processed_entry = {
+                    "icao": entry.get("hex", "").strip() or "UNKNOWN",
+                    "flight": entry.get("flight", "").strip(),
+                    "lat": entry.get("lat"),
+                    "lon": entry.get("lon"),
+                    "altitude": entry.get("alt_baro"),
+                    "speed": entry.get("gs"),
+                    "timestamp": data.get("now"),
+                    "aircraft_type": entry.get("t", "Unknown"),
+                    "registration": entry.get("r", "Unknown"),
+                    "positions": [{"timestamp": data.get("now"), "lat": entry.get("lat"), "lon": entry.get("lon")}],
+                }
+                processed_data.append(processed_entry)
+
+        except json.JSONDecodeError as e:
+            print(f"JSON error in {file_name}: {e}")
+        except Exception as e:
+            print(f"Error processing {file_name}: {e}")
+
     output_file = os.path.join(prepare_data_dir, "processed_data.json")
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(processed_data, f, indent=4)
 
-    print(f"Processed data saved to {output_file}")
+    print(f"✅ Processed {len(processed_data)} aircraft records and saved to {output_file}")
 
     return "OK"
 
@@ -187,9 +194,7 @@ def list_aircraft(num_results: int = 100, page: int = 0) -> list[dict]:
     icao asc
     """
     # TODO
-
     try:
-        # Define the path to the processed data file
         processed_data_file = os.path.join(settings.raw_dir, "prepared", "processed_data.json")
 
         if not os.path.exists(processed_data_file):
@@ -198,22 +203,36 @@ def list_aircraft(num_results: int = 100, page: int = 0) -> list[dict]:
         with open(processed_data_file, "r", encoding="utf-8") as f:
             processed_data = json.load(f)
 
-        # Sort data by ICAO code (ascending order)
-        sorted_data = sorted(processed_data, key=lambda x: x["icao"])
+        print(f"Loaded {len(processed_data)} records from {processed_data_file}")
 
-        # Apply pagination
-        start = page * num_results
-        end = start + num_results
-        paginated_data = sorted_data[start:end]
+        # **Filter out invalid data**
+        valid_aircraft = [
+            aircraft for aircraft in processed_data
+            if aircraft["icao"] not in ["000000", "000001", "000860", "00b2f0", "Unknown", ""]
+            and aircraft["lat"] is not None
+            and aircraft["lon"] is not None
+            and aircraft["altitude"] not in [None, "ground"]  # Remove ground-level aircraft
+            and aircraft["flight"] not in [None, ""]  # Remove aircraft with no flight number
+            and aircraft["aircraft_type"] not in ["Unknown", ""]  # Remove unknown aircraft types
+        ]
+        print(f"Filtered out {len(processed_data) - len(valid_aircraft)} invalid aircraft")
+
+        # Sort by ICAO
+        sorted_data = sorted(valid_aircraft, key=lambda x: x.get("icao", "ZZZZZZ"))
+        print(f"First 5 records after sorting: {sorted_data[:5]}")
+
+        # Pagination
+        paginated_data = sorted_data[page * num_results: (page + 1) * num_results]
+        print(f"Sending {len(paginated_data)} aircraft for page {page}")
+        print(f"First 5 of paginated: {paginated_data[:5]}")
 
         return paginated_data
-    
-    except FileNotFoundError as e:
-        return {"error": str(e)}, status.HTTP_404_NOT_FOUND
+
     except Exception as e:
-        return {"error": f"An error occurred: {e}"}, status.HTTP_500_INTERNAL_SERVER_ERROR
-    
-    return [{"icao": "0d8300", "registration": "YV3382", "type": "LJ31"}]
+        print(f"Error: {e}")
+        return {"error": str(e)}
+   
+    # return [{"icao": "0d8300", "registration": "YV3382", "type": "LJ31"}]
 
 
 @s1.get("/aircraft/{icao}/positions")
