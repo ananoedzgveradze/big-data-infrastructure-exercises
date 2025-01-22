@@ -132,6 +132,7 @@ def prepare_data() -> str:
     os.makedirs(prepare_data_dir, exist_ok=True)
 
     processed_data = []
+    invalid_entries = 0  # Counter for invalid entries
 
     for file_name in os.listdir(raw_data_dir):
         file_path = os.path.join(raw_data_dir, file_name)
@@ -144,10 +145,10 @@ def prepare_data() -> str:
             is_gzipped = first_bytes == b'\x1f\x8b'  # Gzip magic number
 
             if is_gzipped:
-                open_func = gzip.open  # Use gzip if gzipped
+                open_func = gzip.open
                 mode = "rt"
             else:
-                open_func = open  # Use normal open if plain JSON
+                open_func = open
                 mode = "r"
 
             print(f"Processing {file_name}... (GZ: {is_gzipped})")
@@ -160,15 +161,28 @@ def prepare_data() -> str:
                 continue
 
             for entry in data["aircraft"]:
+                # Validate record
+                if not entry.get("hex") or entry.get("hex") in ["000000", "000001"]:
+                    invalid_entries += 1
+                    continue  # Skip invalid ICAO
+
+                if not entry.get("lat") or not entry.get("lon"):
+                    invalid_entries += 1
+                    continue  # Skip records with missing coordinates
+
+                if not entry.get("t"):
+                    invalid_entries += 1
+                    continue  # Skip records with unknown aircraft type
+
                 processed_entry = {
-                    "icao": entry.get("hex", "").strip() or "UNKNOWN",
+                    "icao": entry.get("hex", "").strip(),
                     "flight": entry.get("flight", "").strip(),
                     "lat": entry.get("lat"),
                     "lon": entry.get("lon"),
                     "altitude": entry.get("alt_baro"),
                     "speed": entry.get("gs"),
                     "timestamp": data.get("now"),
-                    "aircraft_type": entry.get("t", "Unknown"),
+                    "aircraft_type": entry.get("t"),
                     "registration": entry.get("r", "Unknown"),
                     "positions": [{"timestamp": data.get("now"), "lat": entry.get("lat"), "lon": entry.get("lon")}],
                 }
@@ -183,8 +197,7 @@ def prepare_data() -> str:
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(processed_data, f, indent=4)
 
-    print(f"✅ Processed {len(processed_data)} aircraft records and saved to {output_file}")
-
+    print(f"Processed {len(processed_data)} valid aircraft records. ❌ Removed {invalid_entries} invalid records.")
     return "OK"
 
 
