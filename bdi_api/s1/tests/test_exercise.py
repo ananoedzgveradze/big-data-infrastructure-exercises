@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+
 from bdi_api.app import app  # Import FastAPI app
 
 client = TestClient(app)

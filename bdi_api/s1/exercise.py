@@ -1,14 +1,12 @@
+import gzip  #for extracting .gz compressed files
+import json  #for handling JSON data
 import os
-import json #for handling JSON data
-import gzip #for extracting .gz compressed files
-import requests #For  HTTP requests to download data
-import shutil # For deleting old files before downloading new ones
-from bs4 import BeautifulSoup  # For deleting old files before downloading new ones
+import shutil  # For deleting old files before downloading new ones
 from typing import Annotated
-from typing import List, Dict
-from fastapi import APIRouter, status
-from fastapi import HTTPException
 
+import requests  #For  HTTP requests to download data
+from bs4 import BeautifulSoup  # For deleting old files before downloading new ones
+from fastapi import APIRouter, HTTPException, status
 from fastapi.params import Query
 
 from bdi_api.settings import Settings
@@ -78,7 +76,7 @@ def download_data(
 
     if not file_links:
         return "No files found"
-    
+
     files_to_download = file_links[:file_limit]
     print(f"Downloading {len(files_to_download)} files...")
 
@@ -90,7 +88,7 @@ def download_data(
         try:
             file_response = requests.get(file_url, stream=True)
             file_response.raise_for_status()
-            
+
             with open(file_path, "wb") as file:
                 file.write(file_response.content)
 
@@ -122,7 +120,7 @@ def prepare_data() -> str:
     Keep in mind that we are downloading a lot of small files, and some libraries might not work well with this!
     """
     # TODO
-    
+
     #define directories
     raw_data_dir = os.path.join(settings.raw_dir, "day=20231101")
     prepare_data_dir = os.path.join(settings.raw_dir, "prepared")
@@ -182,7 +180,7 @@ def prepare_data() -> str:
                     "altitude": entry.get("alt_baro"),
                     "speed": entry.get("gs"),
                     "timestamp": data.get("now"),
-                    "aircraft_type": entry.get("t", "Unknown"), 
+                    "aircraft_type": entry.get("t", "Unknown"),
                     "registration": entry.get("r", "Unknown"),
                     "positions": [{"timestamp": data.get("now"), "lat": entry.get("lat"), "lon": entry.get("lon")}],
                 }
@@ -197,7 +195,7 @@ def prepare_data() -> str:
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(processed_data, f, indent=4)
 
-    print(f"Processed {len(processed_data)} valid aircraft records. ❌ Removed {invalid_entries} invalid records.")
+    print(f"Processed {len(processed_data)} valid aircraft records. Removed {invalid_entries} invalid records.")
     return "OK"
 
 
@@ -213,7 +211,7 @@ def list_aircraft(num_results: int = 100, page: int = 0) -> list[dict]:
         if not os.path.exists(processed_data_file):
             raise FileNotFoundError(f"{processed_data_file} not found.")
 
-        with open(processed_data_file, "r", encoding="utf-8") as f:
+        with open(processed_data_file, encoding="utf-8") as f:
             processed_data = json.load(f)
 
         print(f"Loaded {len(processed_data)} records from {processed_data_file}")
@@ -244,7 +242,7 @@ def list_aircraft(num_results: int = 100, page: int = 0) -> list[dict]:
     except Exception as e:
         print(f"Error: {e}")
         return {"error": str(e)}
-   
+
     # return [{"icao": "0d8300", "registration": "YV3382", "type": "LJ31"}]
 
 
@@ -260,7 +258,7 @@ def get_aircraft_position(icao: str, num_results: int = 1000, page: int = 0) -> 
         if not os.path.exists(processed_data_file):
             raise HTTPException(status_code=404, detail="Processed data not found.")
 
-        with open(processed_data_file, "r", encoding="utf-8") as f:
+        with open(processed_data_file, encoding="utf-8") as f:
             processed_data = json.load(f)
 
         # Find the aircraft data for the specified ICAO
@@ -277,12 +275,12 @@ def get_aircraft_position(icao: str, num_results: int = 1000, page: int = 0) -> 
         start = page * num_results
         end = start + num_results
         paginated_positions = positions[start:end]
-        
+
         return paginated_positions
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
+
     return [{"timestamp": 1609275898.6, "lat": 30.404617, "lon": -86.476566}]
 
 
@@ -295,13 +293,13 @@ def get_aircraft_statistics(icao: str) -> dict:
     * had_emergency
     """
     # TODO Gather and return the correct statistics for the requested aircraft
-   
+
     try:
         processed_data_file = os.path.join(settings.raw_dir, "prepared", "processed_data.json")
         if not os.path.exists(processed_data_file):
             raise HTTPException(status_code=404, detail="Processed data not found.")
 
-        with open(processed_data_file, "r", encoding="utf-8") as f:
+        with open(processed_data_file, encoding="utf-8") as f:
             processed_data = json.load(f)
 
         # Find the aircraft data for the specified ICAO
@@ -326,5 +324,5 @@ def get_aircraft_statistics(icao: str) -> dict:
         raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-    
+
     return {"max_altitude_baro": 300000, "max_ground_speed": 493, "had_emergency": False}
