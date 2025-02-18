@@ -1,5 +1,9 @@
 from fastapi.testclient import TestClient
 
+from bdi_api.app import app
+
+def client() -> TestClient:
+    return TestClient(app)
 
 class TestS1Student:
     """
@@ -11,6 +15,24 @@ class TestS1Student:
     For more information on the library used, search `pytest` in your preferred search engine.
     """
 
+    def test_health_endpoint(self, client: TestClient) -> None:
+        response = client.get("/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert data == "ok" or data == {"message": "ok"}
+
+    def test_version_endpoint(self, client: TestClient) -> None:
+        response = client.get("/version")
+        assert response.status_code == 200
+        data = response.json()
+        assert "version" in data
+
+    def test_root_endpoint(self, client: TestClient) -> None:
+        response = client.get("/")
+        assert response.status_code == 200
+        data = response.json()
+        assert "Welcome to the Aircraft API" in data.get("message", "")
+        
     def test_first(self, client: TestClient) -> None:
         # Implement tests if you want
         with client as client:

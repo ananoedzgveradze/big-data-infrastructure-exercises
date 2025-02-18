@@ -5,7 +5,7 @@ description = "Exercises for the BTS Big Data Infrastructure course"
 readme = "README.adoc"
 authors = [
     "Marti Segarra <marti.segarra@bts.tech>",
-    "Your name <your.email@bts.tech" # TODO
+    "Anano Edzgveradze <Anano.Edzgveradze@bts.tech" # TODO
 ]
 packages = [{include = "bdi_api"}]
 
