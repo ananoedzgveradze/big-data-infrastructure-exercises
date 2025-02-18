@@ -132,11 +132,13 @@ def prepare_data() -> str:
                 if all(key in entry for key in ["hex", "lat", "lon", "alt_baro"]):
                     processed_data.append({
                         "icao": entry["hex"],
-                        "timestamp": entry.get("seen", 0),  
+                        "registration": entry.get("r", "Unknown"),  # Extract registration
+                        "type": entry.get("t", "Unknown"),  # Extract aircraft type
+                        "timestamp": entry.get("seen", 0),
                         "lat": entry["lat"],
                         "lon": entry["lon"],
                         "altitude_baro": entry["alt_baro"],
-                        "ground_speed": entry.get("gs", 0),  
+                        "ground_speed": entry.get("gs", 0),
                         "emergency": entry.get("emergency", False)  
                     })
 
@@ -168,11 +170,31 @@ def list_aircraft(num_results: int = 100, page: int = 0) -> list[dict]:
     icao asc
     """
     # TODO
-    
+    prepared_dir = Path(settings.prepared_dir) / "day=20231101"
+    aircraft_data = {}
+    for json_file in prepared_dir.glob("*.json"):
+        try:
+            with open(json_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                for entry in data:
+                    icao = entry.get("icao")
+                    registration = entry.get("registration", "Unknown")
+                    aircraft_type = entry.get("type", "Unknown")
+                    if icao and icao not in aircraft_data:
+                        aircraft_data[icao] = {
+                            "icao": icao,
+                            "registration": registration,
+                            "type": aircraft_type,
+                        }
+        except Exception as e:
+            print(f"Error reading {json_file.name}: {e}")
+
+    sorted_aircraft = sorted(aircraft_data.values(), key=lambda x: x["icao"])
+    start_idx = page * num_results
+    return sorted_aircraft[start_idx: start_idx + num_results]
 
 
-
-    return [{"icao": "0d8300", "registration": "YV3382", "type": "LJ31"}]
+    # return [{"icao": "0d8300", "registration": "YV3382", "type": "LJ31"}]
 
 
 
