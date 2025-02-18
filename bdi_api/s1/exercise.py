@@ -1,11 +1,11 @@
-import os
-import requests
 import json
-import gzip
+import os
 import shutil
+import time
 from pathlib import Path
-from typing import Annotated, List, Dict
+from typing import Annotated
 
+import requests
 from fastapi import APIRouter, status
 from fastapi.params import Query
 
@@ -55,7 +55,7 @@ def download_data(
     """
     download_dir = os.path.join(settings.raw_dir, "day=20231101")
     base_url = settings.source_url + "/2023/11/01/"
-    
+
     # Clean old files before downloading
     if os.path.exists(download_dir):
         shutil.rmtree(download_dir)
@@ -104,6 +104,7 @@ def prepare_data() -> str:
     Keep in mind that we are downloading a lot of small files, and some libraries might not work well with this!
     """
     # TODO
+    start_time = time.time()
 
     raw_dir = Path(settings.raw_dir) / "day=20231101"
     prepared_dir = Path(settings.prepared_dir) / "day=20231101"
@@ -119,13 +120,13 @@ def prepare_data() -> str:
     for json_file in raw_dir.glob("*.json.gz"):
         try:
             # Some files might not be actually gzipped so we try to read as plain JSON
-            with open(json_file, "r", encoding="utf-8") as f:
+            with open(json_file, encoding="utf-8") as f:
                 raw_data = json.load(f)
-            print(f"✅ Read {json_file.name} as plain JSON.")
+            print(f"Read {json_file.name} as plain JSON.")
 
             # Ensure 'aircraft' key exists
             if "aircraft" not in raw_data:
-                print(f"❌ ERROR: 'aircraft' key missing in {json_file.name}")
+                print(f"ERROR: 'aircraft' key missing in {json_file.name}")
                 continue
 
             processed_data = []
@@ -145,21 +146,24 @@ def prepare_data() -> str:
                     })
 
             if not processed_data:
-                print(f"❌ WARNING: No aircraft data extracted from {json_file.name}")
+                print(f"WARNING: No aircraft data extracted from {json_file.name}")
 
             output_file = prepared_dir / f"{json_file.stem.replace('.json', '')}.json"
             with open(output_file, "w", encoding="utf-8") as f:
                 json.dump(processed_data, f, indent=4)
-            print(f"✅ Saved processed file: {output_file}")
-            print(f"✅ Processed {len(processed_data)} aircraft entries from {json_file.name}")
+            print(f"Saved processed file: {output_file}")
+            print(f"Processed {len(processed_data)} aircraft entries from {json_file.name}")
             processed_files += 1
 
         except Exception as e:
             errors += 1
-            print(f"❌ Error processing {json_file.name}: {str(e)}")
+            print(f"Error processing {json_file.name}: {str(e)}")
+
+        end_time = time.time()  # Record end time
+        total_time = end_time - start_time
 
     return (
-        f"Preparation complete. Processed {processed_files} files. "
+        f"Preparation complete. Processed {processed_files} files in {total_time:.2f} seconds. "
         f"Encountered {errors} errors."
     )
 
@@ -176,7 +180,7 @@ def list_aircraft(num_results: int = 100, page: int = 0) -> list[dict]:
     # Read every processed file and gather unique aircraft info
     for json_file in prepared_dir.glob("*.json"):
         try:
-            with open(json_file, "r", encoding="utf-8") as f:
+            with open(json_file, encoding="utf-8") as f:
                 data = json.load(f)
                 for record in data:
                     icao = record.get("icao")
@@ -197,7 +201,7 @@ def list_aircraft(num_results: int = 100, page: int = 0) -> list[dict]:
     start = page * num_results
     end = start + num_results
     return aircraft_list[start:end]
-    
+
 
 
 @s1.get("/aircraft/{icao}/positions")
@@ -206,13 +210,13 @@ def get_aircraft_position(icao: str, num_results: int = 1000, page: int = 0) -> 
     If an aircraft is not found, return an empty list.
     """
     # TODO implement and return a list with dictionaries with those values.
-    
+
     prepared_dir = Path(settings.prepared_dir) / "day=20231101"
     positions = []
 
     for json_file in prepared_dir.glob("*.json"):
         try:
-            with open(json_file, "r", encoding="utf-8") as f:
+            with open(json_file, encoding="utf-8") as f:
                 data = json.load(f)
                 for record in data:
                     if record.get("icao", "").lower() == icao.lower():
@@ -230,7 +234,7 @@ def get_aircraft_position(icao: str, num_results: int = 1000, page: int = 0) -> 
     start = page * num_results
     end = start + num_results
     return positions[start:end]
-    
+
 
 @s1.get("/aircraft/{icao}/stats")
 def get_aircraft_statistics(icao: str) -> dict:
@@ -241,7 +245,7 @@ def get_aircraft_statistics(icao: str) -> dict:
     * had_emergency
     """
     # TODO Gather and return the correct statistics for the requested aircraft
-    
+
     # prepared_dir = Path(settings.prepared_dir) / "day=20231101"
 
     prepared_dir = Path(settings.prepared_dir) / "day=20231101"
@@ -252,7 +256,7 @@ def get_aircraft_statistics(icao: str) -> dict:
 
     for json_file in prepared_dir.glob("*.json"):
         try:
-            with open(json_file, "r", encoding="utf-8") as f:
+            with open(json_file, encoding="utf-8") as f:
                 data = json.load(f)
                 for record in data:
                     if record.get("icao", "").lower() == icao.lower():
@@ -274,5 +278,4 @@ def get_aircraft_statistics(icao: str) -> dict:
         "max_ground_speed": max_speed,
         "had_emergency": had_emergency,
     }
-    
-    
+
