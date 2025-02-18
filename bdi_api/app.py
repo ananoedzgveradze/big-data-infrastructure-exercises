@@ -79,6 +79,11 @@ async def get_health() -> JSONResponse:
 async def get_version() -> dict:
     return {"version": bdi_api.__version__}
 
+@app.get("/", status_code=200)
+async def root():
+    return {"message": "Welcome to the Aircraft API! Go to /docs for API documentation."}
+
+
 
 def main() -> None:
     import uvicorn

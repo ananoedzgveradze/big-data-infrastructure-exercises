@@ -1,4 +1,9 @@
 import os
+import requests
+import json
+import gzip
+import shutil
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, status
@@ -52,7 +57,31 @@ def download_data(
     base_url = settings.source_url + "/2023/11/01/"
     # TODO Implement download
 
-    return "OK"
+    #Before downloading, it clears the existing directory
+    if os.path.exists(download_dir):
+        shutil.rmtree(download_dir) 
+    os.makedirs(download_dir, exist_ok=True)
+
+    num_downloaded = 0
+
+    # Only download files that exist (increment by 5)
+    for i in range(0, 5000, 5):  
+        if num_downloaded >= file_limit:
+            break  
+
+        file_name = f"{str(i).zfill(6)}Z.json.gz"
+        file_url = base_url + file_name
+        file_path = Path(download_dir) / file_name
+
+        response = requests.get(file_url, stream=True)
+        if response.status_code == 200:
+            with open(file_path, "wb") as f:
+                f.write(response.content)
+            num_downloaded += 1  
+        else:
+            print(f"File not found: {file_url}, skipping...")
+
+    return f"Downloaded {num_downloaded} files to {download_dir}"
 
 
 @s1.post("/aircraft/prepare")
@@ -75,7 +104,62 @@ def prepare_data() -> str:
     Keep in mind that we are downloading a lot of small files, and some libraries might not work well with this!
     """
     # TODO
-    return "OK"
+
+    raw_dir = Path(settings.raw_dir) / "day=20231101"
+    prepared_dir = Path(settings.prepared_dir) / "day=20231101"
+
+    #Before processing, it clears the prepared directory
+    if prepared_dir.exists():
+        shutil.rmtree(prepared_dir)
+    prepared_dir.mkdir(parents=True, exist_ok=True)
+
+    processed_files = 0
+    errors = 0
+
+    for json_file in raw_dir.glob("*.json.gz"):  
+        try:
+            with open(json_file, "r", encoding="utf-8") as f:
+                raw_data = json.load(f)
+
+            print(f"✅ Read {json_file.name} as plain JSON.")
+
+            if "aircraft" not in raw_data:
+                print(f"ERROR: 'aircraft' key missing in {json_file.name}")
+                continue  # Skip this file
+
+            processed_data = []
+            for entry in raw_data["aircraft"]:
+                if all(key in entry for key in ["hex", "lat", "lon", "alt_baro"]):
+                    processed_data.append({
+                        "icao": entry["hex"],
+                        "timestamp": entry.get("seen", 0),  
+                        "lat": entry["lat"],
+                        "lon": entry["lon"],
+                        "altitude_baro": entry["alt_baro"],
+                        "ground_speed": entry.get("gs", 0),  
+                        "emergency": entry.get("emergency", False)  
+                    })
+
+            if not processed_data:
+                print(f"WARNING: No aircraft data extracted from {json_file.name}")
+
+            output_file = Path(prepared_dir) / f"{json_file.stem.replace('.json', '')}.json"
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump(processed_data, f, indent=4)
+
+            print(f"Saved processed file: {output_file}")
+
+            print(f"Processed {len(processed_data)} aircraft entries from {json_file.name}")
+            processed_files += 1
+
+        except Exception as e:
+            errors += 1
+            print(f"Error processing {json_file.name}: {str(e)}")
+
+    return (
+        f"Preparation complete. Processed {processed_files} files. "
+        f"Encountered {errors} errors."
+    )
 
 
 @s1.get("/aircraft/")
@@ -84,7 +168,18 @@ def list_aircraft(num_results: int = 100, page: int = 0) -> list[dict]:
     icao asc
     """
     # TODO
+    
+
+
+
     return [{"icao": "0d8300", "registration": "YV3382", "type": "LJ31"}]
+
+
+
+
+
+
+
 
 
 @s1.get("/aircraft/{icao}/positions")
