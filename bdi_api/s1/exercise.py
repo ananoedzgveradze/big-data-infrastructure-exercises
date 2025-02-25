@@ -83,7 +83,6 @@ def download_data(
     return f"Downloaded {num_downloaded} files to {download_dir}"
 
 
-
 @s1.post("/aircraft/prepare")
 def prepare_data() -> str:
     """Prepare the data in the way you think it's better for the analysis.
@@ -133,17 +132,19 @@ def prepare_data() -> str:
             for entry in raw_data["aircraft"]:
                 # Process only if essential keys are present
                 if all(key in entry for key in ["hex", "lat", "lon", "alt_baro"]):
-                    processed_data.append({
-                        "icao": entry["hex"],
-                        "registration": entry.get("r", "Unknown"),
-                        "type": entry.get("t", "Unknown"),
-                        "timestamp": entry.get("seen", 0),  # Use 'seen' field for timestamp
-                        "lat": entry["lat"],
-                        "lon": entry["lon"],
-                        "altitude_baro": entry["alt_baro"],
-                        "ground_speed": entry.get("gs", 0),
-                        "emergency": entry.get("emergency", False)
-                    })
+                    processed_data.append(
+                        {
+                            "icao": entry["hex"],
+                            "registration": entry.get("r", "Unknown"),
+                            "type": entry.get("t", "Unknown"),
+                            "timestamp": entry.get("seen", 0),  # Use 'seen' field for timestamp
+                            "lat": entry["lat"],
+                            "lon": entry["lon"],
+                            "altitude_baro": entry["alt_baro"],
+                            "ground_speed": entry.get("gs", 0),
+                            "emergency": entry.get("emergency", False),
+                        }
+                    )
 
             if not processed_data:
                 print(f"WARNING: No aircraft data extracted from {json_file.name}")
@@ -190,7 +191,7 @@ def list_aircraft(num_results: int = 100, page: int = 0) -> list[dict]:
                             aircraft_dict[icao] = {
                                 "icao": icao,
                                 "registration": record.get("registration", "Unknown"),
-                                "type": record.get("type", "Unknown")
+                                "type": record.get("type", "Unknown"),
                             }
         except Exception as e:
             print(f"Error reading file {json_file}: {e}")
@@ -201,7 +202,6 @@ def list_aircraft(num_results: int = 100, page: int = 0) -> list[dict]:
     start = page * num_results
     end = start + num_results
     return aircraft_list[start:end]
-
 
 
 @s1.get("/aircraft/{icao}/positions")
@@ -220,11 +220,9 @@ def get_aircraft_position(icao: str, num_results: int = 1000, page: int = 0) -> 
                 data = json.load(f)
                 for record in data:
                     if record.get("icao", "").lower() == icao.lower():
-                        positions.append({
-                            "timestamp": record.get("timestamp"),
-                            "lat": record.get("lat"),
-                            "lon": record.get("lon")
-                        })
+                        positions.append(
+                            {"timestamp": record.get("timestamp"), "lat": record.get("lat"), "lon": record.get("lon")}
+                        )
         except Exception as e:
             print(f"Error reading file {json_file}: {e}")
 
@@ -278,4 +276,3 @@ def get_aircraft_statistics(icao: str) -> dict:
         "max_ground_speed": max_speed,
         "had_emergency": had_emergency,
     }
-

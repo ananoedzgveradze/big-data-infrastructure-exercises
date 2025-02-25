@@ -15,6 +15,7 @@ settings = Settings()
 
 s3 = boto3.client("s3")
 
+
 def upload_to_s3(local_path, bucket_name, s3_key):
     """Uploads a file to S3 and logs progress."""
     try:
@@ -22,7 +23,8 @@ def upload_to_s3(local_path, bucket_name, s3_key):
         s3.upload_file(local_path, bucket_name, s3_key)
         print(f"Successfully uploaded {local_path} to s3://{bucket_name}/{s3_key}")
     except Exception as e:
-        print(f"Upload failed for {local_path}: {str(e)}") 
+        print(f"Upload failed for {local_path}: {str(e)}")
+
 
 s4 = APIRouter(
     responses={
@@ -65,7 +67,7 @@ def download_data(
     download_dir.mkdir(parents=True, exist_ok=True)
 
     num_downloaded = 0
-    for i in range(0, 5000, 5):  
+    for i in range(0, 5000, 5):
         if num_downloaded >= file_limit:
             break
 
@@ -89,7 +91,6 @@ def download_data(
     return f"Downloaded and uploaded {num_downloaded} files to s3://{s3_bucket}/{s3_prefix_path}"
 
 
-
 @s4.post("/aircraft/prepare")
 def prepare_data() -> str:
     """Obtain the data from AWS s3 and store it in the local `prepared` directory
@@ -98,11 +99,11 @@ def prepare_data() -> str:
     All the `/api/s1/aircraft/` endpoints should work as usual
     """
     # TODO
-    
+
     s3_bucket = settings.s3_bucket
     s3_prefix_path = "raw/day=20231101/"
     prepared_dir = Path(settings.prepared_dir) / "day=20231101"
-    
+
     # Clean the prepared directory
     if prepared_dir.exists():
         shutil.rmtree(prepared_dir)
@@ -122,7 +123,6 @@ def prepare_data() -> str:
         local_json_path = local_gz_path.with_suffix("")  # Remove double extension
         local_json_path = local_json_path.with_suffix(".json")
 
-
         # Download file from S3
         s3.download_file(s3_bucket, file_key, str(local_gz_path))
 
@@ -133,7 +133,6 @@ def prepare_data() -> str:
         except OSError:  # If not gzipped, read as plain JSON
             with open(local_gz_path, "r", encoding="utf-8") as json_file:
                 raw_data = json.load(json_file)
-
 
             processed_data = [
                 {
