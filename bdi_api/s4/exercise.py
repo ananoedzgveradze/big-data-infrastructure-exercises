@@ -1,11 +1,11 @@
-import boto3
-import requests
-import shutil
-import json
 import gzip
+import json
+import shutil
 from pathlib import Path
 from typing import Annotated
 
+import boto3
+import requests
 from fastapi import APIRouter, status
 from fastapi.params import Query
 
@@ -131,7 +131,7 @@ def prepare_data() -> str:
             with gzip.open(local_gz_path, "rt", encoding="utf-8") as gz_file:
                 raw_data = json.load(gz_file)
         except OSError:  # If not gzipped, read as plain JSON
-            with open(local_gz_path, "r", encoding="utf-8") as json_file:
+            with open(local_gz_path, encoding="utf-8") as json_file:
                 raw_data = json.load(json_file)
 
             processed_data = [
