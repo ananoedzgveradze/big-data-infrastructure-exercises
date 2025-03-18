@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from bdi_api.app import app
 from bdi_api.s7.exercise import connect_to_database, create_database_tables
 import psycopg2
+import time
 
 client = TestClient(app)
 
@@ -73,3 +74,20 @@ def test_prepare_endpoint():
     response = client.post("/api/s7/aircraft/prepare")
     assert response.status_code == 200
     assert "Processed" in response.text 
+
+def test_stats_endpoint_performance():
+    """Test that the stats endpoint responds within 20ms."""
+    response = client.get("/api/s7/aircraft/")
+    assert response.status_code == 200
+    aircraft_list = response.json()
+    
+    if aircraft_list:
+        icao = aircraft_list[0]["icao"]
+        
+        start_time = time.time()
+        response = client.get(f"/api/s7/aircraft/{icao}/stats")
+        end_time = time.time()
+        
+        assert response.status_code == 200
+        response_time = (end_time - start_time) * 1000  # Convert to milliseconds
+        assert response_time < 20, f"Response time was {response_time}ms, should be < 20ms" 

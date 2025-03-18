@@ -6,63 +6,82 @@ from fastapi import APIRouter, status
 from bdi_api.settings import DBCredentials, Settings
 import psycopg2
 from psycopg2.extras import execute_batch
+from psycopg2.pool import SimpleConnectionPool
 
 settings = Settings()
 db_credentials = DBCredentials()
 s3_client = boto3.client("s3")
 BUCKET_NAME = "bdi-aircraft-anano"
-S3_PREFIX_PATH = "raw/day=20231101/"  # Add correct prefix path
+S3_PREFIX_PATH = "raw/day=20231101/"
+
+# Add connection pooling
+pool = SimpleConnectionPool(
+    minconn=1,
+    maxconn=10,
+    dbname=db_credentials.database,
+    user=db_credentials.username,
+    password=db_credentials.password,
+    host=db_credentials.host,
+    port=db_credentials.port
+)
 
 def connect_to_database():
-    """Create a connection to the PostgreSQL database."""
-    return psycopg2.connect(
-        dbname=db_credentials.database,
-        user=db_credentials.username,
-        password=db_credentials.password,
-        host=db_credentials.host,
-        port=db_credentials.port
-    )
+    """Get a connection from the pool."""
+    return pool.getconn()
+
+def return_connection(conn):
+    """Return connection to the pool."""
+    if conn:
+        pool.putconn(conn)
 
 def create_database_tables():
     """Create the necessary database tables if they don't exist."""
     conn = connect_to_database()
     cur = conn.cursor()
     
-    # Create aircraft table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS aircraft (
-            icao VARCHAR PRIMARY KEY,
-            registration VARCHAR,
-            type VARCHAR
-        );
-    """)
-    
-    # Create aircraft_positions table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS aircraft_positions (
-            icao VARCHAR REFERENCES aircraft(icao),
-            timestamp BIGINT,
-            lat DOUBLE PRECISION,
-            lon DOUBLE PRECISION,
-            altitude_baro DOUBLE PRECISION,
-            ground_speed DOUBLE PRECISION,
-            emergency BOOLEAN,
-            PRIMARY KEY (icao, timestamp)
-        );
-    """)
-    
-    # Create indexes for better performance
-    cur.execute("""
-        CREATE INDEX IF NOT EXISTS idx_aircraft_positions_icao 
-        ON aircraft_positions(icao);
+    try:
+        # Create aircraft table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS aircraft (
+                icao VARCHAR PRIMARY KEY,
+                registration VARCHAR,
+                type VARCHAR
+            );
+        """)
         
-        CREATE INDEX IF NOT EXISTS idx_aircraft_positions_timestamp 
-        ON aircraft_positions(timestamp);
-    """)
-    
-    conn.commit()
-    cur.close()
-    conn.close()
+        # Create aircraft_positions table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS aircraft_positions (
+                icao VARCHAR REFERENCES aircraft(icao),
+                timestamp BIGINT,
+                lat DOUBLE PRECISION,
+                lon DOUBLE PRECISION,
+                altitude_baro DOUBLE PRECISION,
+                ground_speed DOUBLE PRECISION,
+                emergency BOOLEAN,
+                PRIMARY KEY (icao, timestamp)
+            );
+        """)
+        
+        # Create optimized indexes
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_aircraft_positions_icao_timestamp 
+            ON aircraft_positions(icao, timestamp);
+            
+            CREATE INDEX IF NOT EXISTS idx_aircraft_positions_icao_altitude 
+            ON aircraft_positions(icao, altitude_baro);
+            
+            CREATE INDEX IF NOT EXISTS idx_aircraft_positions_icao_speed 
+            ON aircraft_positions(icao, ground_speed);
+            
+            CREATE INDEX IF NOT EXISTS idx_aircraft_positions_icao_emergency 
+            ON aircraft_positions(icao, emergency);
+        """)
+        
+        conn.commit()
+    finally:
+        cur.close()
+        return_connection(conn)
 
 def get_all_files_from_s3():
     all_data = []
@@ -153,7 +172,7 @@ def save_to_database(data):
     
     conn.commit()
     cur.close()
-    conn.close()
+    return_connection(conn)
 
 def create_database():
     """Create the database if it doesn't exist."""
@@ -309,7 +328,8 @@ def list_aircraft(num_results: int = 100, page: int = 0) -> list[dict]:
         
         return results
     finally:
-        conn.close()
+        cur.close()
+        return_connection(conn)
 
 
 @s7.get("/aircraft/{icao}/positions")
@@ -336,32 +356,39 @@ def get_aircraft_position(icao: str, num_results: int = 1000, page: int = 0) -> 
         
         return results
     finally:
-        conn.close()
+        cur.close()
+        return_connection(conn)
 
 
 @s7.get("/aircraft/{icao}/stats")
 def get_aircraft_statistics(icao: str) -> dict:
-    """Returns different statistics about the aircraft
-
-    * max_altitude_baro
-    * max_ground_speed
-    * had_emergency
-
-    FROM THE DATABASE
-
-    Use credentials passed from `db_credentials`
-    """
+    """Returns different statistics about the aircraft"""
     conn = connect_to_database()
     
     try:
         cur = conn.cursor()
-        cur.execute("SELECT COALESCE(MAX(altitude_baro), 0) as max_altitude_baro, COALESCE(MAX(ground_speed), 0) as max_ground_speed, COALESCE(BOOL_OR(emergency), FALSE) as had_emergency FROM aircraft_positions WHERE icao = %s", (icao,))
+        cur.execute("""
+            WITH stats AS (
+                SELECT 
+                    MAX(altitude_baro) as max_alt,
+                    MAX(ground_speed) as max_speed,
+                    BOOL_OR(emergency) as had_emergency
+                FROM aircraft_positions
+                WHERE icao = %s
+            )
+            SELECT 
+                COALESCE(max_alt, 0),
+                COALESCE(max_speed, 0),
+                COALESCE(had_emergency, FALSE)
+            FROM stats
+        """, (icao,))
         
         row = cur.fetchone()
         return {
-            "max_altitude_baro": row[0],
-            "max_ground_speed": row[1],
-            "had_emergency": row[2]
+            "max_altitude_baro": float(row[0]),
+            "max_ground_speed": float(row[1]),
+            "had_emergency": bool(row[2])
         }
     finally:
-        conn.close()
+        cur.close()
+        return_connection(conn)
