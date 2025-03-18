@@ -15,6 +15,7 @@ class DBCredentials(BaseSettings):
     port: int = 5432
     username: str
     password: str
+    database: str = "bdi"
     model_config = SettingsConfigDict(env_prefix="bdi_db_")
 
 
