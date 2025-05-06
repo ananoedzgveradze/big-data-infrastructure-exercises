@@ -36,4 +36,5 @@ archive.zip
 !/data/**/.gitkeep
 
 .report.json
-.pytest.json
+.pytest.json.env
+airflowDags/.env
