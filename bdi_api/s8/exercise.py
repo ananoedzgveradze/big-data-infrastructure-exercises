@@ -1,11 +1,10 @@
-from typing import Optional
 from datetime import datetime
-import sqlalchemy as sa
-from sqlalchemy import create_engine, text
-from fastapi import APIRouter, status, HTTPException
 
-from bdi_api.settings import DBCredentials, Settings
+from fastapi import APIRouter, HTTPException, status
+from sqlalchemy import create_engine, text
+
 from bdi_api.s8.models import Aircraft, AircraftCO2Data
+from bdi_api.settings import DBCredentials, Settings
 
 settings = Settings()
 db_credentials = DBCredentials()
@@ -26,22 +25,22 @@ s8 = APIRouter(
 @s8.get("/aircraft/", response_model=list[Aircraft])
 def list_aircraft(num_results: int = 100, page: int = 0) -> list[Aircraft]:
     """List all the available aircraft with their details from the database.
-    
+
     Args:
         num_results: Number of results to return per page
         page: Page number (0-based) for pagination
-        
+
     Returns:
         List of Aircraft objects with registration, type, owner, manufacturer and model information
     """
     offset = page * num_results
-    
+
     query = text("""
         WITH unique_aircraft AS (
             SELECT DISTINCT icao
             FROM readsb_aircraft_data
         )
-        SELECT 
+        SELECT
             ua.icao,
             adb.registration,
             adb.icao_aircraft_type as type,
@@ -53,14 +52,14 @@ def list_aircraft(num_results: int = 100, page: int = 0) -> list[Aircraft]:
         ORDER BY ua.icao ASC
         LIMIT :limit OFFSET :offset
     """)
-    
+
     try:
         with engine.connect() as conn:
             result = conn.execute(
                 query,
                 {"limit": num_results, "offset": offset}
             )
-            
+
             return [
                 Aircraft(
                     icao=row.icao,
@@ -81,11 +80,11 @@ def list_aircraft(num_results: int = 100, page: int = 0) -> list[Aircraft]:
 @s8.get("/aircraft/{icao}/co2", response_model=AircraftCO2Data)
 def get_aircraft_co2(icao: str, day: str) -> AircraftCO2Data:
     """Calculate CO2 emissions for a specific aircraft on a given day.
-    
+
     Args:
         icao: Aircraft ICAO identifier
         day: Date in YYYY-MM-DD format
-        
+
     Returns:
         AircraftCO2Data object with hours flown and CO2 emissions (if available)
     """
@@ -99,11 +98,11 @@ def get_aircraft_co2(icao: str, day: str) -> AircraftCO2Data:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid date format. Use YYYY-MM-DD"
             )
-        
+
         # Query to get aircraft type and flight hours
         query = text("""
             WITH flight_data AS (
-                SELECT 
+                SELECT
                     rad.icao,
                     adb.icao_aircraft_type as type,
                     COUNT(*) * 5.0 / 3600.0 as hours  -- Each row is 5 seconds
@@ -114,7 +113,7 @@ def get_aircraft_co2(icao: str, day: str) -> AircraftCO2Data:
                 AND rad.timestamp < :end_day
                 GROUP BY rad.icao, adb.icao_aircraft_type
             )
-            SELECT 
+            SELECT
                 fd.icao,
                 fd.type,
                 fd.hours as hours_flown,
@@ -122,7 +121,7 @@ def get_aircraft_co2(icao: str, day: str) -> AircraftCO2Data:
             FROM flight_data fd
             LEFT JOIN aircraft_fuel_consumption afc ON fd.type = afc.aircraft_type
         """)
-        
+
         with engine.connect() as conn:
             result = conn.execute(
                 query,
@@ -132,25 +131,25 @@ def get_aircraft_co2(icao: str, day: str) -> AircraftCO2Data:
                     "end_day": next_day
                 }
             ).first()
-            
+
             if not result:
                 return AircraftCO2Data(icao=icao, hours_flown=0, co2=None)
-            
+
             hours_flown = float(result.hours_flown)
-            
+
             # Calculate CO2 if we have fuel consumption data
             co2 = None
             if result.galph is not None:
                 fuel_used_gal = result.galph * hours_flown
                 fuel_used_kg = fuel_used_gal * 3.04
                 co2 = (fuel_used_kg * 3.15) / 907.185
-            
+
             return AircraftCO2Data(
                 icao=icao,
                 hours_flown=hours_flown,
                 co2=co2
             )
-            
+
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e

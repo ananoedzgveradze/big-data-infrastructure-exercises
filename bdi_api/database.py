@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 
 from bdi_api.settings import DBCredentials
 
@@ -18,4 +18,4 @@ def get_db():
     try:
         yield db
     finally:
-        db.close() 
+        db.close()

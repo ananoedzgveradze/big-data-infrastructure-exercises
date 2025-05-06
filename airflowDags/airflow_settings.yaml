@@ -1,0 +1,67 @@
+# This file allows you to configure Airflow Connections, Pools, and Variables in a single place for local development only.
+# NOTE: json dicts can be added to the conn_extra field as yaml key value pairs. See the example below.
+
+# For more information, refer to our docs: https://www.astronomer.io/docs/astro/cli/develop-project#configure-airflow_settingsyaml-local-development-only
+# For questions, reach out to: https://support.astronomer.io
+# For issues create an issue ticket here: https://github.com/astronomer/astro-cli/issues
+
+project:
+  name: airflowDags
+  description: Big Data Infrastructure Airflow Project
+
+runtime:
+  version: 2.8.1
+  home: /usr/local/airflow
+  dags_folder: /usr/local/airflow/dags
+  plugins_folder: /usr/local/airflow/plugins
+  requirements_file: /usr/local/airflow/requirements.txt
+
+postgres:
+  version: 17
+  user: postgres
+  password: postgres
+  db: airflow
+  port: 5432
+
+webserver:
+  port: 8080
+
+scheduler:
+  cpu: 1
+  memory: 2G
+
+triggerer:
+  cpu: 1
+  memory: 2G
+
+workers:
+  cpu: 1
+  memory: 2G
+
+volumes:
+  - ./dags:/usr/local/airflow/dags
+  - ./plugins:/usr/local/airflow/plugins
+  - ./include:/usr/local/airflow/include
+  - ./config:/usr/local/airflow/config
+  - ./logs:/usr/local/airflow/logs
+
+airflow:
+  connections:
+    - conn_id: aws_default
+      conn_type: aws
+      conn_extra:
+        region_name: us-east-1
+    - conn_id: postgres_default
+      conn_type: postgres
+      conn_host: postgres
+      conn_schema: airflow
+      conn_login: postgres
+      conn_password: postgres
+      conn_port: 5432
+  pools:
+    - pool_name:
+      pool_slot:
+      pool_description:
+  variables:
+    - variable_name:
+      variable_value:

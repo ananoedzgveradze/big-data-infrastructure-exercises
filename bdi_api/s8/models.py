@@ -1,6 +1,8 @@
-from typing import Optional
-from pydantic import BaseModel
 from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel
+
 
 class Aircraft(BaseModel):
     icao: str
@@ -50,4 +52,4 @@ class AircraftCO2Data(BaseModel):
     co2: Optional[float] = None
 
     class Config:
-        from_attributes = True 
+        from_attributes = True

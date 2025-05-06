@@ -1,10 +1,12 @@
-from datetime import datetime
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.providers.postgres.hooks.postgres import PostgresHook
-from airflow.providers.amazon.aws.hooks.s3 import S3Hook
-from airflow.models import Variable
 import logging
+from datetime import datetime
+
+from airflow import DAG
+from airflow.models import Variable
+from airflow.operators.python import PythonOperator
+from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+from airflow.providers.postgres.hooks.postgres import PostgresHook
+
 
 def test_postgres():
     try:
@@ -25,18 +27,18 @@ def test_s3():
         bucket_name = Variable.get('S3_BUCKET_NAME')
         s3_hook = S3Hook()  # Uses aws_default by default
         s3_client = s3_hook.get_conn()
-        
+
         # Test if we can access the specific bucket
         response = s3_client.head_bucket(Bucket=bucket_name)
         print(f"S3 Connection Test - Successfully connected to bucket: {bucket_name}")
-        
+
         # List a few objects in the bucket
         objects = s3_client.list_objects_v2(Bucket=bucket_name, MaxKeys=5)
         if 'Contents' in objects:
             print(f"Sample objects in bucket: {[obj['Key'] for obj in objects['Contents']]}")
         else:
             print("Bucket is empty")
-            
+
     except Exception as e:
         logging.error(f"S3 Connection Test Failed: {str(e)}")
         raise
@@ -59,4 +61,4 @@ with DAG(
         python_callable=test_s3
     )
 
-    test_postgres_task >> test_s3_task 
+    test_postgres_task >> test_s3_task
